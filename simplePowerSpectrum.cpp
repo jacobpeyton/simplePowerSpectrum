@@ -6,6 +6,8 @@
 #include <vector>
 #include <vector_types.h>
 #include <limits>
+#include <fftw3.h>
+#include <omp.h>
 
 using namespace std;
 
@@ -92,7 +94,7 @@ int main(int argc, char *argv[]) {
 
 			for (int i = 0; i < N.x; ++i) {
 				for(int j = 0; j < N.y; ++j) {
-					for(int k = 0 k < N.z; ++k) {
+					for(int k = 0; k < N.z; ++k) {
 						int numRans = pDist(gen); // Poisson sample to get number of randoms for the cell
 						
         					index = z + N.z*(y + N.y*x);
@@ -109,10 +111,10 @@ int main(int argc, char *argv[]) {
 
 			for (int i = 0; i < N.x; ++i) {
 				for(int j = 0; j < N.y; ++j) {
-					for(int k = 0 k < N.z; ++k) {
+					for(int k = 0; k < N.z; ++k) {
         					index = z + N.z*(y + N.y*x);
 						if (index < N.w) {
-						    diffGrid[index] = realGrid[index] - alpha * randGrid[index];
+						    diffGrid[index] = realGrid[index] - ALPHA * randGrid[index];
 						}
 					}
 				}
@@ -130,6 +132,25 @@ int main(int argc, char *argv[]) {
 			fftw_execute(dr2dk);
 
 			//Calculate Frequences for each bin, and bin frequencies
+			vector<double> k_x = fftFrequencies(N.x, L.x);
+			vector<double> k_y = fftFrequencies(N.y, L.y);
+			vector<double> k_z = fftFrequencies(N.z, L.z);
+
+			vector<double> Pk(N.w);
+			vector<int> Nk(N.w);
+
+			for (int i = 0; i < N.x; ++i) {
+			    for (int j = 0; j < N.y; ++j) {
+				for (int k = 0; k <= N.z/2; ++k) {
+				    int index = k + (N.z/2 + 1)*(j + N.y*i);
+				    double k_mag = sqrt(k_x[i]*k_x[i] + k_y[j]*k_y[j] + k_z[k]*k_z[k]);
+				    int bin = (k_mag - k_min)/Delta_k;
+				    Pk[bin] += (dk[index][0]*dk[index][0] + dk[index][1]*dk[index][1]);
+				    Nk[bin]++;
+				}
+			    }
+			}
+
 			//Calculate power spectrum from frequencies
 		}
 		else {
