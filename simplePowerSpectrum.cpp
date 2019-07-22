@@ -9,13 +9,15 @@
 #include <fftw3.h>
 #include <omp.h>
 
-using namespace std;
-
 int const TIMESRAN = 10;
 double const ALPHA = 0.1;
 
-vector<double> fftFrequencies(int N, double L) {
-    vector<double> k(N);
+double const k_min = 0.01;
+double const k_max = 0.2;
+int const N_k = 19;
+
+std::vector<double> fftFrequencies(int N, double L) {
+    std::vector<double> k(N);
     double dk = 2.0*M_PI/L;
     for (int i = 0; i <= N/2; ++i)
         k[i] = i*dk;
@@ -25,6 +27,8 @@ vector<double> fftFrequencies(int N, double L) {
 }
 
 int main(int argc, char *argv[]) {
+	using namespace std;
+
 	if(argc < 3) {
 		cout << "Error: Need Input and Output Filenames\n";
 		getchar();
@@ -38,15 +42,21 @@ int main(int argc, char *argv[]) {
 		getchar();
 		ifstream inputFile (inputName);
 		if(inputFile.is_open()) {
-			//cout << "Able to read " << inputName << "\n";
-			//getchar();
-			//Bin Galaxies to 512x512x512 bin grid
+			//Prepare Arrays and Values
 			int4 N = {512, 512, 512, 0};
 			N.w = N.x*N.y*N.z;
 			double3 L = {1024.0, 1024.0, 1024.0};
 			double3 Delta_r = {L.x/N.x, L.y/N.y, L.z/N.z};
-			vector<int> realGrid(N.w);
+			vector<double> realGrid(N.w);
 
+			vector<fftw_complex> dk(N.x*N.y*(N.z/2 + 1));
+			fftw_init_threads();
+			fftw_import_wisdom_from_filename("fftwWisdom.dat");
+			fftw_plan_with_nthreads(omp_get_max_threads());
+			fftw_plan dr2dk = fftw_plan_dft_r2c_3d(N.x, N.y, N.z, realGrid.data(), dk.data(), FFTW_MEASURE);
+			fftw_export_wisdom_to_filename("fftwWisdom.dat");
+
+			//Bin Galaxies to 512x512x512 bin grid
 			int subPos1, subPos2;
 			int count = 0;
 			int x, y, z, index;
@@ -60,7 +70,7 @@ int main(int argc, char *argv[]) {
 				if(subPos2 >= 0) {
 					sub = line.substr(subPos1, subPos2 + 1);
 					x = int (stod(sub)/Delta_r.x);
-;				}
+				}
 				subPos1 = subPos2 + 1;
 				subPos2 = line.find(" ", subPos1);
 				if(subPos2 >= 0) {
@@ -107,51 +117,44 @@ int main(int argc, char *argv[]) {
 			}
 
 			//Take weighted difference
-			vector<double> diffGrid(N.w);
-
-			for (int i = 0; i < N.x; ++i) {
-				for(int j = 0; j < N.y; ++j) {
-					for(int k = 0; k < N.z; ++k) {
-        					index = z + N.z*(y + N.y*x);
-						if (index < N.w) {
-						    diffGrid[index] = realGrid[index] - ALPHA * randGrid[index];
-						}
-					}
-				}
+			#pragma omp parallel for
+			for (int i = 0; i < N.w; ++i) {
+				realGrid[index] -= ALPHA * randGrid[index];
 			}
 
 			//Feed 1D Representation of grid through fourier tranform, complex array is generated
-			vector<fftw_complex> dk(N.x*N.y*(N.z/2 + 1));
-
-			fftw_init_threads();
-			fftw_import_wisdom_from_filename("fftwWisdom.dat");
-			fftw_plan_with_nthreads(omp_get_max_threads());
-			fftw_plan dr2dk = fftw_plan_dft_r2c_3d(N.x, N.y, N.z, diffGrid.data(), dk.data(), FFTW_MEASURE);
-			fftw_export_wisdom_to_filename("fftwWisdom.dat");
-
+			
 			fftw_execute(dr2dk);
 
-			//Calculate Frequences for each bin, and bin frequencies
+			//Calculate Frequences for each bin, bin frequencies, calculate power spectrum from frequencies
 			vector<double> k_x = fftFrequencies(N.x, L.x);
 			vector<double> k_y = fftFrequencies(N.y, L.y);
 			vector<double> k_z = fftFrequencies(N.z, L.z);
 
-			vector<double> Pk(N.w);
-			vector<int> Nk(N.w);
+			vector<double> Pk(N_k, 0.0);
+			vector<int> Nk(N_k, 0);
+			double Pshot = count - ALPHA * ranCount;
 
+			double Delta_k = (k_max - k_min)/N_k;
 			for (int i = 0; i < N.x; ++i) {
 			    for (int j = 0; j < N.y; ++j) {
 				for (int k = 0; k <= N.z/2; ++k) {
-				    int index = k + (N.z/2 + 1)*(j + N.y*i);
-				    double k_mag = sqrt(k_x[i]*k_x[i] + k_y[j]*k_y[j] + k_z[k]*k_z[k]);
-				    int bin = (k_mag - k_min)/Delta_k;
-				    Pk[bin] += (dk[index][0]*dk[index][0] + dk[index][1]*dk[index][1]);
-				    Nk[bin]++;
+					int index = k + (N.z/2 + 1)*(j + N.y*i);
+					double k_mag = sqrt(k_x[i]*k_x[i] + k_y[j]*k_y[j] + k_z[k]*k_z[k]);
+					int bin = (k_mag - k_min)/Delta_k;
+					if(bin < N_k && bin >= 0) {
+						Pk[bin] += (dk[index][0]*dk[index][0] + dk[index][1]*dk[index][1]) - Pshot;
+						++Nk[bin];
+					}
 				}
 			    }
 			}
 
-			//Calculate power spectrum from frequencies
+			for (int i = 0; i < N_k; ++i) {
+				Pk[i] = Pk[i] / (Nk[i] * L.x * L.y * L.z);
+				cout << Pk[i] << ",";
+			}
+
 		}
 		else {
 			cout << "Unable to read " << inputName << "\n";
