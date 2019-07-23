@@ -59,12 +59,11 @@ int main(int argc, char *argv[]) {
 			//Bin Galaxies to 512x512x512 bin grid
 			int subPos1, subPos2;
 			int count = 0;
-			int x, y, z, index;
 			string line, sub;
 			while(getline(inputFile,line)) {
-				x = 0;
-				y = 0;
-				z = 0;
+				int x = 0;
+				int y = 0;
+				int z = 0;
 				subPos1 = 0;
 				subPos2 = line.find(" ", 0);
 				if(subPos2 >= 0) {
@@ -84,7 +83,7 @@ int main(int argc, char *argv[]) {
 					z = int (stod(sub)/Delta_r.z);
 				}
 				
-        			index = z + N.z*(y + N.y*x);
+        			int index = z + N.z*(y + N.y*x);
 				if (index < N.w) {
 				    realGrid[index] += 1.0;
 				}
@@ -107,7 +106,7 @@ int main(int argc, char *argv[]) {
 					for(int k = 0; k < N.z; ++k) {
 						int numRans = pDist(gen); // Poisson sample to get number of randoms for the cell
 						
-        					index = z + N.z*(y + N.y*x);
+        					int index = k + N.z*(j + N.y*i);
 						if (index < N.w) {
 						    randGrid[index] += numRans;
 						}
@@ -119,7 +118,7 @@ int main(int argc, char *argv[]) {
 			//Take weighted difference
 			#pragma omp parallel for
 			for (int i = 0; i < N.w; ++i) {
-				realGrid[index] -= ALPHA * randGrid[index];
+				realGrid[i] -= ALPHA * randGrid[i];
 			}
 
 			//Feed 1D Representation of grid through fourier tranform, complex array is generated
@@ -133,7 +132,7 @@ int main(int argc, char *argv[]) {
 
 			vector<double> Pk(N_k, 0.0);
 			vector<int> Nk(N_k, 0);
-			double Pshot = count - ALPHA * ranCount;
+			double Pshot = count + ALPHA * ALPHA * ranCount;
 
 			double Delta_k = (k_max - k_min)/N_k;
 			for (int i = 0; i < N.x; ++i) {
