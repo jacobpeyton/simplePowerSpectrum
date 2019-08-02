@@ -68,7 +68,7 @@ void generateAndBinPoints(std::ofstream &writeFile, std::vector<double> &grid, i
 
 				int index = k + N.z*(j + N.y*i);
 				for (int ran = 0; ran < numRans; ++ran) {
-					writeFile << r_x + uDist(gen)*Delta_r.x << " " << r_y + uDist(gen)*Delta_r.y << " " << r_z + uDist(gen)*Delta_r.z << "\n";
+					writeFile << r_x + uDist(gen)*Delta_r.x << " " << r_y + uDist(gen)*Delta_r.y << " " << r_z + uDist(gen)*Delta_r.z << " \n";
 				}
 				if (index < N.w) {
 					grid[index] += numRans;
